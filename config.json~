@@ -1,0 +1,10 @@
+{
+	"catalog": {
+		"type": "ElasticSearch",
+		"url" : "http://localhost:9200/",
+		"accounts": "accounts"
+		"properties": "properties"
+		"events": "events"
+	},
+	"port"	: "12345"
+}

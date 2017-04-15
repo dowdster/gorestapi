@@ -1,0 +1,328 @@
+package main
+ 
+import (
+		"errors"
+		"strconv"
+    "encoding/json"
+    "log"
+    "net/http"
+    "bytes"
+    "fmt"
+    "io/ioutil"
+)
+ 
+type ConfigInfo struct {
+	Port				string       `json:"port"`
+	Catalog			*CatalogInfo `json:"catalog"`
+}
+
+type CatalogInfo struct {
+	Type				string `json:"type"`
+	URL					string `json:"url"`
+	personidx	  string `json:"accounts"`
+	propertyidx string `json:"properties"`
+	eventidx    string `json:"events"`
+}
+
+type ProductInfo struct {
+	ID					string	`json:"id"`
+	Name				string	`json:"name"`
+	Version			string	`json:"version"`
+	Message			string	`json:"message"`
+}
+
+type Person struct {
+    ID        string   `json:"id,omitempty"`
+    Firstname string   `json:"firstname,omitempty"`
+    Lastname  string   `json:"lastname,omitempty"`
+    Address   *Address `json:"address,omitempty"`
+}
+ 
+type Address struct {
+    City  string `json:"city,omitempty"`
+    State string `json:"state,omitempty"`
+}
+ 
+var g_config  ConfigInfo
+var g_product ProductInfo
+//var g_people []Person
+
+func PersonEndpoint(w http.ResponseWriter, req *http.Request) {
+    //params := mux.Vars(req)
+		/*param := req.URL.Query().Get("id")
+    for _, item := range g_people {
+        //if item.ID == params["id"] {
+        if item.ID == param {
+            json.NewEncoder(w).Encode(item)
+            return
+        }
+    }
+    json.NewEncoder(w).Encode(&Person{})*/
+
+		if (req.Method=="GET") {
+			GetPerson(w, req)
+		} else if (req.Method=="PUT") {
+			CreatePerson(w, req)
+		} else if (req.Method=="POST") {
+			CreatePerson(w, req)
+		} else if (req.Method=="DELETE") {
+			DeletePerson(w, req)
+		} else {
+				fmt.Printf("/person hasnt implemented %s", req.Method)
+				http.NotFound(w, req)
+		}
+		return
+}
+
+func GetPeople(w http.ResponseWriter, req *http.Request) {
+		fmt.Printf("Retrieving people")
+
+		if (req.Method!="GET") {
+				http.NotFound(w, req)
+				return
+    }
+
+    url := "http://localhost:9200/account/person/_search"
+    query := []byte(`{"query":{"match_all":{}}}`)
+    esreq, err := http.NewRequest("POST", url, bytes.NewBuffer(query))
+    esreq.Header.Set("Content-Type", "application/json")
+
+    client := &http.Client{}
+		fmt.Printf("URL=%s", url)
+    resp, err := client.Do(esreq)
+    if err != nil {
+				fmt.Printf("Error (%s) retrieving people from catalog", err.Error())
+        panic(err)
+    }
+    defer resp.Body.Close()
+    body, err := ioutil.ReadAll(resp.Body)
+    if err != nil {
+				fmt.Printf("Error (%s) reading response body from catalog", err.Error())
+        panic(err)
+    }
+    fmt.Printf("\n%s", string(body))
+
+    //json.NewEncoder(w).Encode(people)
+    //var people []Person
+    //json.NewDecoder(resp.Body).Decode(&people)
+    //resp.Body = body
+    //json.NewEncoder(w).Encode(body)
+		fmt.Fprintf(w, "%s", body)
+		fmt.Printf("Retrieving people complete")
+}
+ 
+func GetPerson(w http.ResponseWriter, req *http.Request) {
+		fmt.Printf("Retrieving person")
+		param      := req.URL.Query().Get("id")
+
+		// 
+		if (param=="_all" || param=="*") {
+			GetPeople(w, req)
+			return
+		}
+
+		fmt.Printf("Person=%s", param)
+    url        := "http://localhost:9200/account/person/" + param
+    esreq, err := http.NewRequest("GET", url, nil)
+    esreq.Header.Set("Content-Type", "application/json")
+
+    client     := &http.Client{}
+		fmt.Printf("URL=%s", url)
+    resp, err  := client.Do(esreq)
+    if err != nil {
+				fmt.Printf("Error (%s) retrieving people from catalog", err.Error())
+        panic(err)
+    }
+    defer resp.Body.Close()
+    body, err := ioutil.ReadAll(resp.Body)
+    if err != nil {
+				fmt.Printf("Error (%s) reading response body from catalog", err.Error())
+        panic(err)
+    }
+		fmt.Fprintf(w, "%s", body)
+		fmt.Printf("Retrieving person complete")
+}
+
+func CreatePerson(w http.ResponseWriter, req *http.Request) {
+		fmt.Printf("Creating person")
+		param := req.URL.Query().Get("id")
+
+		// create person struct
+    var person Person
+    _ = json.NewDecoder(req.Body).Decode(&person)
+		//err   := json.Unmarshal(req.Body, &person)
+		// set id
+    person.ID = param
+
+		// convert person to JSON
+		jperson, err := json.Marshal(person)
+    if err != nil {
+				fmt.Printf("Error (%s) generating JSON for person %s.",  err.Error(), param)
+        panic(err)
+    }
+
+		// add to catalog
+    url := "http://localhost:9200/account/person/" + param
+    esreq, err := http.NewRequest("PUT", url, bytes.NewBuffer(jperson))
+    esreq.Header.Set("Content-Type", "application/json")
+
+    client := &http.Client{}
+		fmt.Printf("URL=%s", url)
+    resp, err := client.Do(esreq)
+    if err != nil {
+				fmt.Printf("Error (%s) creating person in catalog", err.Error())
+        panic(err)
+    }
+
+    defer resp.Body.Close()
+		// read response
+    body, err := ioutil.ReadAll(resp.Body)
+    if err != nil {
+				fmt.Printf("Error (%s) reading create person response from catalog", err.Error())
+        panic(err)
+		}
+		// output to caller
+		fmt.Fprintf(w, "%s", body)
+		fmt.Printf("Creating person complete")
+}
+ 
+func DeletePerson(w http.ResponseWriter, req *http.Request) {
+		fmt.Printf("Removing person")
+		param := req.URL.Query().Get("id")
+    //for index, item := range g_people {
+        //if item.ID == params["id"] {
+        //if item.ID == param {
+            //g_people = append(g_people[:index], g_people[index+1:]...)
+            //break
+        //}
+    //}
+    //json.NewEncoder(w).Encode(g_people)
+
+		// remove fm catalog
+    url := "http://localhost:9200/account/person/" + param
+    esreq, err := http.NewRequest("DELETE", url, nil)
+    esreq.Header.Set("Content-Type", "application/json")
+
+    client := &http.Client{}
+		fmt.Printf("URL=%s", url)
+    resp, err := client.Do(esreq)
+    if err != nil {
+				fmt.Printf("Error (%s) deleting person in catalog", err.Error())
+        panic(err)
+    }
+
+    defer resp.Body.Close()
+		// read response
+    body, err := ioutil.ReadAll(resp.Body)
+    if err != nil {
+				fmt.Printf("Error (%s) reading delete person response from catalog", err.Error())
+        panic(err)
+		}
+		// output to caller
+		fmt.Fprintf(w, "%s", body)
+		fmt.Printf("Removing person complete")
+}
+ 
+func RootEndpoint(w http.ResponseWriter, req* http.Request) {
+	fmt.Printf("RootEndPoint\n")
+	fmt.Printf("Method=%s\n", req.Method)
+	if (req.Method!="GET") {
+		http.NotFound(w, req)
+		return
+  }
+	fmt.Printf("Path=%s\n", req.URL.Path)
+	if (req.URL.Path[1:]!="") {
+		http.NotFound(w, req)
+		return
+  }
+	json.NewEncoder(w).Encode(g_product)
+}
+
+func LoadConfig(configfile string) {
+	fmt.Printf("Loading configuration from %s\n", configfile);
+	data, err 	:= ioutil.ReadFile(configfile)
+	if err==nil {
+		err				= json.Unmarshal(data, &g_config)
+		if err!=nil {
+   		fmt.Printf("Error (%d) encountered loading json from '%s'\n", err, configfile)
+		}
+	}
+
+	if err!=nil {
+		g_config	= ConfigInfo{Port:"666", Catalog: &CatalogInfo{Type:"ElasticSearch", URL:"http://localhost:9200", personidx: "accounts", propertyidx: "properties", eventidx: "events"}}
+	} 
+
+  fmt.Printf("*************\n")
+	fmt.Printf("CONFIG:\n")
+	fmt.Printf("\tListen Port: %s\n", g_config.Port)
+	fmt.Printf("\tCatalog    :\n")
+	fmt.Printf("\t\tType    : %s\n", g_config.Catalog.Type)
+	fmt.Printf("\t\tURL     : %s\n", g_config.Catalog.URL)
+	fmt.Printf("\t\tPeople  : %s\n", g_config.Catalog.personidx)
+	fmt.Printf("\t\tProperty: %s\n", g_config.Catalog.propertyidx)
+	fmt.Printf("\t\tEvent   : %s\n", g_config.Catalog.eventidx)
+  fmt.Printf("*************\n")
+}
+
+func LoadProduct(productfile string) {
+    fmt.Printf("Loading product info from %s\n", productfile);
+		data, err 	:= ioutil.ReadFile(productfile)
+		if err==nil {
+			err				= json.Unmarshal(data, &g_product)
+			if err!=nil {
+    		fmt.Printf("Error (%d) encountered parsing file '%s'\n", err, productfile)
+			}
+		}
+		if (err!=nil) {
+			g_product = ProductInfo{ID:"12345-67890-ABCDEF", Name: "VacationMe", Version: "1.0.0", Message: "Welcome to VacationMe RestAPI"}
+		}
+    fmt.Printf("*************\n")
+		fmt.Printf("PRODUCT:\n")
+		fmt.Printf("\tID     : %s\n", g_product.ID)
+		fmt.Printf("\tName   : %s\n", g_product.Name)
+		fmt.Printf("\tVersion: %s\n", g_product.Version)
+		fmt.Printf("\tMessage: %s\n", g_product.Message)
+    fmt.Printf("*************\n")
+}
+
+func StartHttpListener() (error) {
+	fmt.Printf("Generating routes...\n")
+  http.HandleFunc("/", RootEndpoint)
+  http.HandleFunc("/person/", PersonEndpoint)
+
+	fmt.Printf("Checking configuration...")
+	portno, err	:= strconv.Atoi(g_config.Port)
+	if (err!=nil) {
+		return errors.New("Invalid Port specified in config.")
+	}
+
+	fmt.Printf("Establishing listener on PORT=%d\n", portno)
+	port := ":" + g_config.Port
+  log.Fatal(http.ListenAndServe(port, nil))
+	return nil
+}
+
+func main() {
+    fmt.Printf("Starting...\n")
+
+		//esUrl 			:= "http://localhost:9200"
+		//acctIdx 		:= "account"
+		configfile 	:= "config.json"
+		LoadConfig(configfile)
+
+		productfile := "product.json"
+		LoadProduct(productfile)
+
+    //people = append(people, Person{ID: "1", Firstname: "Nic", Lastname: "Raboy", Address: &Address{City: "Dublin", State: "CA"}})
+    //people = append(people, Person{ID: "2", Firstname: "Maria", Lastname: "Raboy"})
+
+    //router := mux.NewRouter()
+    //router.HandleFunc("/people", GetPeopleEndpoint).Methods("GET")
+    //router.HandleFunc("/people/{id}", GetPersonEndpoint).Methods("GET")
+    //router.HandleFunc("/people/{id}", CreatePersonEndpoint).Methods("POST")
+    //router.HandleFunc("/people/{id}", DeletePersonEndpoint).Methods("DELETE")
+		StartHttpListener()
+
+    fmt.Printf("Exiting...")
+}
+
